@@ -34,6 +34,28 @@ const Contact = () => {
       setError(null);
       setSubmitted(false);
 
+      const submitWithNetlifyForms = async () => {
+        const encoded = new URLSearchParams({
+          "form-name": CONTACT_FORM_NAME,
+          name,
+          email,
+          message,
+          website,
+        }).toString();
+
+        const netlifyResponse = await fetch("/", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body: encoded,
+        });
+
+        if (!netlifyResponse.ok) {
+          throw new Error(`Erreur ${netlifyResponse.status} lors de l'envoi.`);
+        }
+      };
+
       if (contactApiUrl) {
         const response = await fetch(contactApiUrl, {
           method: "POST",
@@ -52,36 +74,23 @@ const Contact = () => {
         const payload = isJson ? await response.json().catch(() => null) : null;
 
         if (!response.ok) {
+          // Netlify static deploy: if API route doesn't exist, fallback to Netlify Forms.
+          if (response.status === 404) {
+            await submitWithNetlifyForms();
+          } else {
           const fallback =
             response.status >= 500
               ? "API contact indisponible. Verifiez la configuration du backend."
               : `Erreur ${response.status} lors de l'envoi.`;
           throw new Error(payload?.error || fallback);
+          }
         }
 
-        if (!payload?.ok) {
+        if (response.ok && !payload?.ok) {
           throw new Error(payload?.error || "Envoi non confirme par le serveur.");
         }
       } else {
-        const encoded = new URLSearchParams({
-          "form-name": CONTACT_FORM_NAME,
-          name,
-          email,
-          message,
-          website,
-        }).toString();
-
-        const response = await fetch("/", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded",
-          },
-          body: encoded,
-        });
-
-        if (!response.ok) {
-          throw new Error(`Erreur ${response.status} lors de l'envoi.`);
-        }
+        await submitWithNetlifyForms();
       }
 
       setSubmitted(true);
