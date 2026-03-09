@@ -4,10 +4,18 @@ import { useState, type FormEvent } from "react";
 
 const CONTACT_EMAIL = "ilhamqaidouh22@gmail.com";
 const CONTACT_FORM_NAME = "contact";
+const CONTACT_SUCCESS_QUERY = "sent";
 
 const Contact = () => {
-  const contactApiUrl = import.meta.env.VITE_CONTACT_API_URL?.trim();
-  const [submitted, setSubmitted] = useState(false);
+  const configuredApiUrl = import.meta.env.VITE_CONTACT_API_URL?.trim() || "";
+  const contactApiUrl = /^https?:\/\//.test(configuredApiUrl) ? configuredApiUrl : "";
+  const useApiMode = Boolean(contactApiUrl);
+  const [submitted, setSubmitted] = useState(() => {
+    if (typeof window === "undefined") {
+      return false;
+    }
+    return new URLSearchParams(window.location.search).get(CONTACT_SUCCESS_QUERY) === "1";
+  });
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
@@ -18,6 +26,11 @@ const Contact = () => {
   });
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+    if (!useApiMode) {
+      // Netlify Forms mode: allow native browser submit.
+      return;
+    }
+
     e.preventDefault();
 
     const name = formData.name.trim();
@@ -34,63 +47,32 @@ const Contact = () => {
       setError(null);
       setSubmitted(false);
 
-      const submitWithNetlifyForms = async () => {
-        const encoded = new URLSearchParams({
-          "form-name": CONTACT_FORM_NAME,
+      const response = await fetch(contactApiUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
           name,
           email,
           message,
           website,
-        }).toString();
+        }),
+      });
 
-        const netlifyResponse = await fetch("/", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded",
-          },
-          body: encoded,
-        });
+      const isJson = response.headers.get("content-type")?.includes("application/json");
+      const payload = isJson ? await response.json().catch(() => null) : null;
 
-        if (!netlifyResponse.ok) {
-          throw new Error(`Erreur ${netlifyResponse.status} lors de l'envoi.`);
-        }
-      };
+      if (!response.ok) {
+        const fallback =
+          response.status >= 500
+            ? "API contact indisponible. Verifiez la configuration du backend."
+            : `Erreur ${response.status} lors de l'envoi.`;
+        throw new Error(payload?.error || fallback);
+      }
 
-      if (contactApiUrl) {
-        const response = await fetch(contactApiUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            name,
-            email,
-            message,
-            website,
-          }),
-        });
-
-        const isJson = response.headers.get("content-type")?.includes("application/json");
-        const payload = isJson ? await response.json().catch(() => null) : null;
-
-        if (!response.ok) {
-          // Netlify static deploy: if API route doesn't exist, fallback to Netlify Forms.
-          if (response.status === 404) {
-            await submitWithNetlifyForms();
-          } else {
-          const fallback =
-            response.status >= 500
-              ? "API contact indisponible. Verifiez la configuration du backend."
-              : `Erreur ${response.status} lors de l'envoi.`;
-          throw new Error(payload?.error || fallback);
-          }
-        }
-
-        if (response.ok && !payload?.ok) {
-          throw new Error(payload?.error || "Envoi non confirme par le serveur.");
-        }
-      } else {
-        await submitWithNetlifyForms();
+      if (!payload?.ok) {
+        throw new Error(payload?.error || "Envoi non confirme par le serveur.");
       }
 
       setSubmitted(true);
@@ -154,6 +136,8 @@ const Contact = () => {
             whileInView={{ opacity: 1, x: 0 }}
             viewport={{ once: true }}
             onSubmit={handleSubmit}
+            method="POST"
+            action={`/?${CONTACT_SUCCESS_QUERY}=1#contact`}
             name={CONTACT_FORM_NAME}
             data-netlify="true"
             netlify-honeypot="website"
@@ -199,9 +183,9 @@ const Contact = () => {
             />
             {error && <p className="text-xs text-red-400">{error}</p>}
             {submitted && <p className="text-xs text-emerald-400">Message envoye avec succes.</p>}
-            <button type="submit" disabled={isSending} className="btn-primary w-full disabled:opacity-70 disabled:cursor-not-allowed">
+            <button type="submit" disabled={useApiMode && isSending} className="btn-primary w-full disabled:opacity-70 disabled:cursor-not-allowed">
               <Send size={16} />
-              {isSending ? "Envoi..." : "Envoyer"}
+              {useApiMode && isSending ? "Envoi..." : "Envoyer"}
             </button>
           </motion.form>
         </div>
