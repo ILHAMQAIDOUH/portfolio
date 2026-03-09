@@ -3,9 +3,10 @@ import { Mail, Phone, MapPin, Send } from "lucide-react";
 import { useState, type FormEvent } from "react";
 
 const CONTACT_EMAIL = "ilhamqaidouh22@gmail.com";
+const CONTACT_FORM_NAME = "contact";
 
 const Contact = () => {
-  const contactApiUrl = import.meta.env.VITE_CONTACT_API_URL || "/api/contact";
+  const contactApiUrl = import.meta.env.VITE_CONTACT_API_URL?.trim();
   const [submitted, setSubmitted] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -33,32 +34,54 @@ const Contact = () => {
       setError(null);
       setSubmitted(false);
 
-      const response = await fetch(contactApiUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
+      if (contactApiUrl) {
+        const response = await fetch(contactApiUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            name,
+            email,
+            message,
+            website,
+          }),
+        });
+
+        const isJson = response.headers.get("content-type")?.includes("application/json");
+        const payload = isJson ? await response.json().catch(() => null) : null;
+
+        if (!response.ok) {
+          const fallback =
+            response.status >= 500
+              ? "API contact indisponible. Verifiez la configuration du backend."
+              : `Erreur ${response.status} lors de l'envoi.`;
+          throw new Error(payload?.error || fallback);
+        }
+
+        if (!payload?.ok) {
+          throw new Error(payload?.error || "Envoi non confirme par le serveur.");
+        }
+      } else {
+        const encoded = new URLSearchParams({
+          "form-name": CONTACT_FORM_NAME,
           name,
           email,
           message,
           website,
-        }),
-      });
+        }).toString();
 
-      const isJson = response.headers.get("content-type")?.includes("application/json");
-      const payload = isJson ? await response.json().catch(() => null) : null;
+        const response = await fetch("/", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body: encoded,
+        });
 
-      if (!response.ok) {
-        const fallback =
-          response.status >= 500
-            ? "API contact indisponible. Relancez `npm run dev` et verifiez la config .env."
-            : `Erreur ${response.status} lors de l'envoi.`;
-        throw new Error(payload?.error || fallback);
-      }
-
-      if (!payload?.ok) {
-        throw new Error(payload?.error || "Envoi non confirme par le serveur.");
+        if (!response.ok) {
+          throw new Error(`Erreur ${response.status} lors de l'envoi.`);
+        }
       }
 
       setSubmitted(true);
@@ -67,7 +90,7 @@ const Contact = () => {
     } catch (err) {
       const message =
         err instanceof TypeError
-          ? "Connexion API impossible. Lancez `npm run dev` (pas `vite` seul)."
+          ? "Connexion impossible. Verifiez la configuration de l'envoi."
           : err instanceof Error
             ? err.message
             : "Echec de l'envoi.";
@@ -122,10 +145,15 @@ const Contact = () => {
             whileInView={{ opacity: 1, x: 0 }}
             viewport={{ once: true }}
             onSubmit={handleSubmit}
+            name={CONTACT_FORM_NAME}
+            data-netlify="true"
+            netlify-honeypot="website"
             className="glass-card p-6 space-y-4"
           >
+            <input type="hidden" name="form-name" value={CONTACT_FORM_NAME} />
             <input
               type="text"
+              name="name"
               placeholder="Votre nom"
               required
               value={formData.name}
@@ -134,6 +162,7 @@ const Contact = () => {
             />
             <input
               type="email"
+              name="email"
               placeholder="Votre email"
               required
               value={formData.email}
@@ -141,6 +170,7 @@ const Contact = () => {
               className="w-full bg-secondary text-foreground rounded-lg px-4 py-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
             />
             <textarea
+              name="message"
               placeholder="Votre message"
               required
               rows={4}
@@ -150,6 +180,7 @@ const Contact = () => {
             />
             <input
               type="text"
+              name="website"
               tabIndex={-1}
               autoComplete="off"
               value={formData.website}

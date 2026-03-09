@@ -33,6 +33,12 @@
   </head>
 
   <body>
+    <form name="contact" data-netlify="true" netlify-honeypot="website" hidden>
+      <input type="text" name="name" />
+      <input type="email" name="email" />
+      <textarea name="message"></textarea>
+      <input type="text" name="website" />
+    </form>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
